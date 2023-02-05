@@ -1,7 +1,6 @@
 .vscode
 .ipynb_checkpoints
 .idea
-/data/raw
-/data/processed
+/data
 /references
 .ssh
