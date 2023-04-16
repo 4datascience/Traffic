@@ -5,8 +5,8 @@ import matplotlib.pyplot as plt
 from sklearn.tree import DecisionTreeClassifier
 from sklearn import base
 
-def labelToIndex(i,clf):
-    return clf.labelDict[i]
+def labelToIndex(cl,clf):
+    return clf.labelDict[cl]
 
 def indexToLabel(i,clf):
     return clf.classes[i]
@@ -53,11 +53,11 @@ class AdaBoostClassifier_:
         
         # 2) Error-rate computation
             incorrect = Gm(X_) != y_
-            errM = np.average(incorrect,weights=w_,axis=0)            
-            self.estimator_errors_.append(errM)
+            errM = np.average(incorrect,weights=w_,axis=0)
+            self.estimator_errors_.append(np.average(incorrect,axis=0))
         
-        # 3) WeakLearner weight for ensemble computation
-            BetaM = np.log((1-errM)/errM)+np.log(k-1)            
+        # 3) WeakLearner weight for ensemble computation [errM < (k-1)/k]
+            BetaM = np.log((1-errM)/errM)+np.log(k-1)
             self.models[m] = (BetaM,Gm)
 
         # 4) Observation weights update for next iteration with weights normalization
@@ -84,7 +84,7 @@ class AdaBoostClassifier_:
         iTL = np.vectorize(labelToIndex)
         y_pred = np.stack([iTL(Gm(X),self) for _,Gm in self.models], axis=-1)
 
-        # Weight the indices count using Bm associated to each weak_learner
+        # Weight the indices count using Beta (Bm) associated to each weak_learner
         prob_matrix += np.apply_along_axis(lambda x: np.bincount(x, weights=Bms_, minlength=k), axis=1, arr=y_pred)*k/(k-1)
         
         iTL = np.vectorize(indexToLabel)

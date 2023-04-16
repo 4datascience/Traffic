@@ -61,10 +61,10 @@ class RUSBoostClassifier_:
         
         # 3) Error-rate computation
             incorrect = Gm(X_) != y_
-            errM = np.average(incorrect,weights=w_,axis=0)            
-            self.estimator_errors_.append(errM)
+            errM = np.average(incorrect,weights=w_,axis=0)
+            self.estimator_errors_.append(np.average(incorrect,axis=0))
         
-        # 4) WeakLearner weight for ensemble computation
+        # 4) WeakLearner weight for ensemble computation [errM < (k-1)/k]
             BetaM = np.log((1-errM)/errM)+np.log(k-1)            
             self.models[m] = (BetaM,Gm)
 
