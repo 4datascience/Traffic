@@ -14,6 +14,7 @@ def indexToLabel(i,clf):
 class AdaBoostClassifier_:
     
     def __init__(self,base_estimator=None,n_estimators=50,learning_rate=1.0):
+        print("M2 Implementation of AdaBoost")
         self.n_estimators = n_estimators
         self.learning_rate = learning_rate
         self.models = []
@@ -36,7 +37,7 @@ class AdaBoostClassifier_:
         # Initialize observation weights as 1/(N*(k-1)) where N is total `n_samples` and k is the numebr of classes
         N = df.shape[0]
         B = N*(k-1)
-        D = {epoch: [1/B]*(k-1) for epoch in np.int32(df.index.astype(np.int64)/1e9)}
+        D = {epoch: [1/B]*(k-1) for epoch in df.index}
 
         # Training data initalization
         X_ = df.filter(regex=(X_columns)).values
@@ -44,7 +45,7 @@ class AdaBoostClassifier_:
         
         # M iterations (#WeakLearners)
         for m in range(self.n_estimators):
-            D_ = np.sum(D.values(), axis=-1)
+            D_ = np.sum(list(D.values()), axis=-1)
             iTL = np.vectorize(labelToIndex)
             y_indices_ = iTL(y_,self)
 
@@ -77,7 +78,7 @@ class AdaBoostClassifier_:
                 for cl in range(k):
                     if cl != y_indices_[i]:
                         w_ = 0.5*(1+predictions_proba[i,y_indices_[i]]-predictions_proba[i,cl])
-                        D[epoch][k_index] *= BetaM**w_
+                        D[epoch][k_index] *= BetaM**(self.learning_rate*w_)
                         norm_ += D[epoch][k_index]
                         k_index += 1
             for epoch in D.keys():

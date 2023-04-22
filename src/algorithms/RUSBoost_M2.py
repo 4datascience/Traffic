@@ -11,9 +11,10 @@ def labelToIndex(cl,clf):
 def indexToLabel(i,clf):
     return clf.classes[i]
 
-class AdaBoostClassifier_:
+class RUSBoostClassifier_:
     
     def __init__(self,base_estimator=None,n_estimators=50,learning_rate=1.0):
+        print("M2 Implementation of RUSBoost")
         self.n_estimators = n_estimators
         self.learning_rate = learning_rate
         self.models = []
@@ -38,7 +39,13 @@ class AdaBoostClassifier_:
         # Initialize observation weights as 1/(N*(k-1)) where N is total `n_samples` and k is the numebr of classes
         N = df.shape[0]
         B = N*(k-1)
-        D = {epoch: [1/B]*(k-1) for epoch in np.int32(df.index.astype(np.int64)/1e9)}
+        D = {epoch: np.full(k-1,1/B) for epoch in df.index}
+
+        # Get whole dataset samples to later calculate the weighting factors on every iteration
+        X = df.filter(regex=(X_columns)).values
+        y = df[y_column].values
+        iTL = np.vectorize(labelToIndex)
+        y_indices = iTL(y,self)
         
         # M iterations (#WeakLearners)
         for m in range(self.n_estimators):
@@ -53,11 +60,7 @@ class AdaBoostClassifier_:
             # Training data initalization
             X_ = df_.filter(regex=(X_columns)).values
             y_ = df_[y_column].values
-            D_indices_ = np.int32(df_.index.astype(np.int64)/1e9)
-
-            D_ = np.sum(D_indices_.values(), axis=-1)
-            iTL = np.vectorize(labelToIndex)
-            y_indices_ = iTL(y_,self)
+            D_ = np.sum([D[epoch] for epoch in df_.index], axis=-1)
 
         # 2) WeakLearner training
             Gm = base.clone(self.base_estimator).\
@@ -65,38 +68,34 @@ class AdaBoostClassifier_:
             self.models.append(Gm)
         
         # 3) Error-rate computation
-            predictions_proba = Gm(X_)
+            predictions_proba = Gm(X)
             sum_pseudolosses = 0
-            for i, epoch in enumerate(D_indices_):
+            for i, epoch in enumerate(D.keys()):
                 k_index = 0
                 for cl in range(k):
-                    if cl != y_indices_[i]:
-                        sum_pseudolosses += D[epoch][k_index]*(1-predictions_proba[i,y_indices_[i]]+predictions_proba[i,cl])
+                    if cl != y_indices[i]:
+                        sum_pseudolosses += D[epoch][k_index]*(1-predictions_proba[i,y_indices[i]]+predictions_proba[i,cl])
                         k_index += 1
 
             error = 0.5 * sum_pseudolosses
             self.estimator_errors_.append(error)
         
         # 4) WeakLearner weight for ensemble computation
-            BetaM = error/(1- error +1e-8)
+            BetaM = error/(1-error)
             self.models[m] = (BetaM,Gm)
 
         # 5) Observation weights update for next iteration with weights normalization
             norm_ = 0
-            for i, epoch in enumerate(D_indices_.keys()):
+            for i, epoch in enumerate(D.keys()):
                 k_index = 0
                 for cl in range(k):
-                    if cl != y_indices_[i]:
-                        w_ = 0.5*(1+predictions_proba[i,y_indices_[i]]-predictions_proba[i,cl])
-                        D[epoch][k_index] *= BetaM**w_
+                    if cl != y_indices[i]:
+                        w_ = 0.5*(1+predictions_proba[i,y_indices[i]]-predictions_proba[i,cl])
+                        D[epoch][k_index] *= BetaM**(self.learning_rate*w_)
                         norm_ += D[epoch][k_index]
                         k_index += 1
-            for epoch in D.keys():         
-                if epoch not in D_indices_:
-                    norm_ += sum(D[epoch])
             for epoch in D.keys():
-                for k_index in range(k-1):
-                    D[epoch][k_index] /= norm_
+                D[epoch] /= norm_
         
         return self
             

@@ -14,6 +14,7 @@ def indexToLabel(i,clf):
 class AdaBoostClassifier_:
     
     def __init__(self,base_estimator=None,n_estimators=50,learning_rate=1.0):
+        print("SAMME.R Implementation of AdaBoost")
         self.n_estimators = n_estimators
         self.learning_rate = learning_rate
         self.models = []
@@ -32,7 +33,7 @@ class AdaBoostClassifier_:
         
         # Initialize observation weights as 1/N where N is total `n_samples`
         N = df.shape[0]
-        w = {epoch: 1/N for epoch in np.int32(df.index.astype(np.int64)/1e9)}
+        w = {epoch: 1/N for epoch in df.index}
         
         # Class labels mapping to indices
         self.createLabelDict(np.unique(df[y_column]))
