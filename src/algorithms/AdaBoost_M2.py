@@ -21,52 +21,69 @@ class AdaBoostClassifier_:
             base_estimator = DecisionTreeClassifier(max_depth=1)
         self.base_estimator = base_estimator
         self.estimator_errors_ = []
-        self.observation_weights_ = {}
-        
+
     def fit(self, df: pd.DataFrame, X_columns: str, y_column: str):
         """
         param df: Training dataframe with shape (n_samples, )
         param X_columns: pattern matching DataFrame column names that contain the features
         param y_column: name of DataFrame column name with the labels
-        """
-        
-        # Initialize observation weights as 1/N where N is total `n_samples`
-        N = df.shape[0]
-        w = {epoch: 1/N for epoch in np.int32(df.index.astype(np.int64)/1e9)}
+        """        
         
         # Class labels mapping to indices
         self.createLabelDict(np.unique(df[y_column]))
         k = len(self.classes)
 
+        # Initialize observation weights as 1/(N*(k-1)) where N is total `n_samples` and k is the numebr of classes
+        N = df.shape[0]
+        B = N*(k-1)
+        D = {epoch: [1/B]*(k-1) for epoch in np.int32(df.index.astype(np.int64)/1e9)}
+
         # Training data initalization
         X_ = df.filter(regex=(X_columns)).values
         y_ = df[y_column].values
-        w_indices_ = np.array(list(w.keys()))
         
         # M iterations (#WeakLearners)
         for m in range(self.n_estimators):
-            w_ = np.array(list(w.values()))
+            D_ = np.sum(D.values(), axis=-1)
+            iTL = np.vectorize(labelToIndex)
+            y_indices_ = iTL(y_,self)
 
         # 1) WeakLearner training
             Gm = base.clone(self.base_estimator).\
-                            fit(X_,y_,sample_weight=w_).predict_proba
+                            fit(X_,y_,sample_weight=D_).predict_proba
             self.models.append(Gm)
         
         # 2) Error-rate computation
-            sum_model_hypothesis = np.sum(np.stack([self._prob2classWeight_(model(X_)) for model in self.models], axis=-1), axis=-1)
-            iTL = np.vectorize(indexToLabel)            
-            incorrect = iTL(np.argmax(sum_model_hypothesis,axis=1),self) != y_
-            self.estimator_errors_.append(np.average(incorrect,axis=0))
+            predictions_proba = Gm(X_)
+            sum_pseudolosses = 0
+            for i, epoch in enumerate(D):
+                k_index = 0
+                for cl in range(k):
+                    if cl != y_indices_[i]:
+                        sum_pseudolosses += D[epoch][k_index]*(1-predictions_proba[i,y_indices_[i]]+predictions_proba[i,cl])
+                        k_index += 1
 
-        # 3) Observation weights update for next iteration with weights normalization
-            iTL = np.vectorize(labelToIndex)
-            tmp_ = iTL(y_,self)
-            w_ *= np.exp(-self.learning_rate* (k-1)/k * np.log(Gm(X_)[np.arange(len(tmp_)),tmp_]))
-            norm_ = sum(w_)
-            for i, j in enumerate(w_indices_):
-                w[j] = w_[i]/norm_
+            error = 0.5 * sum_pseudolosses
+            self.estimator_errors_.append(error)
         
-        self.observation_weights_ = w
+        # 3) WeakLearner weight for ensemble computation
+            BetaM = error/(1- error +1e-8)
+            self.models[m] = (BetaM,Gm)
+
+        # 4) Observation weights update for next iteration with weights normalization
+            norm_ = 0
+            for i, epoch in enumerate(D.keys()):
+                k_index = 0
+                for cl in range(k):
+                    if cl != y_indices_[i]:
+                        w_ = 0.5*(1+predictions_proba[i,y_indices_[i]]-predictions_proba[i,cl])
+                        D[epoch][k_index] *= BetaM**w_
+                        norm_ += D[epoch][k_index]
+                        k_index += 1
+            for epoch in D.keys():
+                for k_index in range(k-1):
+                    D[epoch][k_index] /= norm_
+        
         return self
             
     def createLabelDict(self,classes):
@@ -74,21 +91,8 @@ class AdaBoostClassifier_:
         self.classes = classes
         for i,cl in enumerate(classes):
             self.labelDict[cl] = i
-
-    def _prob2classWeight_(self, probabilities):
-        """
-        Following the SAMME.R algorithm, returns the hypothesis probabilities for each class
-        param probabilities: The class probabiilties output by the fitted model (n_samples, n_classes)
-        """
-        k = len(self.classes)
-        tmp_ = np.log(probabilities+1e-8)
-        h_k = np.log(probabilities+1e-8)
-        for i in range(k):
-            h_k[:,i] -= np.sum(np.delete(tmp_,i,axis=1), axis=1) / k
-        h_k *= (k-1)
-        return h_k
     
     def predict(self,X):
-        sum_model_hypothesis = np.sum(np.stack([self._prob2classWeight_(model(X)) for model in self.models], axis=-1), axis=-1)
+        sum_model_hypothesis = np.sum(np.stack([-np.log(Bm)*Gm(X) for Bm,Gm in self.models], axis=-1), axis=-1)
         iTL = np.vectorize(indexToLabel)            
         return iTL(np.argmax(sum_model_hypothesis,axis=1),self)

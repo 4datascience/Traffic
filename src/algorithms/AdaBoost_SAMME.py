@@ -41,11 +41,11 @@ class AdaBoostClassifier_:
         # Training data initalization
         X_ = df.filter(regex=(X_columns)).values
         y_ = df[y_column].values
-        w_indices_ = np.int32(df.index.astype(np.int64)/1e9)
+        w_indices_ = np.array(list(w.keys()))
         
         # M iterations (#WeakLearners)
         for m in range(self.n_estimators):
-            w_ = np.array([w[i] for i in w_indices_])
+            w_ = np.array(list(w.values()))
 
         # 1) WeakLearner training
             Gm = base.clone(self.base_estimator).\
@@ -62,7 +62,7 @@ class AdaBoostClassifier_:
 
         # 4) Observation weights update for next iteration with weights normalization
             w_ *= np.exp(self.learning_rate* BetaM*(incorrect*(w_ > 0)))
-            norm_ = sum(w_)
+            norm_ = np.sum(w_)
             for i, j in enumerate(w_indices_):
                 w[j] = w_[i]/norm_
         

@@ -50,7 +50,9 @@ class RUSBoostClassifier_:
             
             # Indices are dates in integer format
             w_indices_ = np.int32(df_.index.astype(np.int64)/1e9)
-            w_ = np.array([w[i] for i in w_indices_])
+            w_ = np.array([w[epoch] for epoch in w_indices_])
+                #/ Map from epoch in w_indices to array position in w_
+            w_indices_2_w_ = {epoch: i for i, epoch in enumerate(w_indices_)}
 
             X_ = df_.filter(regex=(X_columns)).values
             y_ = df_[y_column].values
@@ -70,9 +72,13 @@ class RUSBoostClassifier_:
 
         # 5) Observation weights update for next iteration with weights normalization
             w_ *= np.exp(self.learning_rate* BetaM*(incorrect*(w_ > 0)))
-            norm_ = sum(w_)
-            for i, j in enumerate(w_indices_):
-                w[j] = w_[i]/norm_
+            norm_ = 0
+            for epoch in w:
+                if epoch in w_indices_:
+                    w[epoch] = w_[w_indices_2_w_[epoch]]
+                norm_ += w[epoch]
+            for epoch in w:
+                w[epoch] /= norm_
         
         self.observation_weights_ = w
         return self
