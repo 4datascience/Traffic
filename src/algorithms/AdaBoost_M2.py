@@ -21,7 +21,8 @@ class AdaBoostClassifier_:
         if base_estimator == None:
             base_estimator = DecisionTreeClassifier(max_depth=1)
         self.base_estimator = base_estimator
-        self.estimator_errors_ = []
+        self.estimator_errors_ = []        
+        self.observation_weights_ = {}
 
     def fit(self, df: pd.DataFrame, X_columns: str, y_column: str):
         """
@@ -34,7 +35,7 @@ class AdaBoostClassifier_:
         self.createLabelDict(np.unique(df[y_column]))
         k = len(self.classes)
 
-        # Initialize observation weights as 1/(N*(k-1)) where N is total `n_samples` and k is the numebr of classes
+        # Initialize observation weights as 1/(N*(k-1)) where N is total `n_samples` and k is the number of classes
         N = df.shape[0]
         B = N*(k-1)
         D = {epoch: [1/B]*(k-1) for epoch in df.index}
@@ -84,6 +85,8 @@ class AdaBoostClassifier_:
             for epoch in D.keys():
                 for k_index in range(k-1):
                     D[epoch][k_index] /= norm_
+        
+        self.observation_weights_ = D
         
         return self
             

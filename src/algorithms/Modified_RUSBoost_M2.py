@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+from operator import itemgetter
 import matplotlib.pyplot as plt
 
 from sklearn.tree import DecisionTreeClassifier
@@ -11,10 +12,10 @@ def labelToIndex(cl,clf):
 def indexToLabel(i,clf):
     return clf.classes[i]
 
-class RUSBoostClassifier_:
+class ModifiedRUSBoostClassifier_:
     
     def __init__(self,base_estimator=None,n_estimators=50,learning_rate=1.0):
-        print("M2 Implementation of RUSBoost")
+        print("M2 Implementation of MODIFIED RUSBoost")
         self.n_estimators = n_estimators
         self.learning_rate = learning_rate
         self.models = []
@@ -54,7 +55,14 @@ class RUSBoostClassifier_:
         # 1) Random UnderSampling
             df_ = pd.DataFrame()
             for label_ in self.classes:
-                df_ = pd.concat([ df_, df[ df[y_column]==label_ ].sample(undersampling_n, replace=False) ])
+                _df_label_ = df[ df[y_column]==label_ ]
+                if len(_df_label_) <= undersampling_n:
+                    df_ = pd.concat([ df_, df[ df[y_column]==label_ ] ])
+                else:
+                    # Order weights array in decreasing order to select the first `undersampling_n` elements
+                    _D_ = {epoch: weight for epoch, weight in D.items() if epoch in _df_label_.index}
+                    _D_ = [epoch for epoch,_ in sorted(_D_.items(), key = lambda x: sum(itemgetter(1)(x)), reverse = True)[:undersampling_n]]
+                    df_ = pd.concat([ df_, _df_label_.loc[_D_] ])
 
             
             # Training data initalization
