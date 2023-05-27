@@ -65,7 +65,6 @@ class RUSBoostClassifier_:
         # 2) WeakLearner training
             Gm = base.clone(self.base_estimator).\
                             fit(X_,y_,sample_weight=D_).predict_proba
-            self.models.append(Gm)
         
         # 3) Error-rate computation
             predictions_proba = Gm(X)

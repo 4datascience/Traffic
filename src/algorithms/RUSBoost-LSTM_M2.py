@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
-from sklearn.preprocessing import MinMaxScaler, OneHotEncoder
+from sklearn import preprocessing
 from tensorflow import keras
 
 def labelToIndex(cl,clf):
@@ -22,7 +22,7 @@ class LSTMRUSBoostClassifier_:
         self.learning_rate = learning_rate
         self.models = []
         self.scaler = []
-        self.onehot_encoder = OneHotEncoder
+        self.onehot_encoder = preprocessing.OneHotEncoder
         self.sequence_length = sequence_length
         self.estimator_errors_ = []
         self.observation_weights_ = {}
@@ -58,14 +58,14 @@ class LSTMRUSBoostClassifier_:
 
         # Initialize input scaler for each feature
         for feature in range(X.shape[2]):
-            self.scaler[feature] = MinMaxScaler().fit(np.array([[X[:,-1,feature].max()]*self.sequence_length, [X[:,-1,feature].min()]*self.sequence_length]))
+            self.scaler.append( preprocessing.MinMaxScaler().fit(np.array([[X[:,-1,feature].max()]*self.sequence_length, [X[:,-1,feature].min()]*self.sequence_length])) )
             X[:,:,feature] = self.scaler[feature].transform(X[:,:,feature])
         
         # Initialize output one-hot vector encoder
         y = df[y_column].values
         iTL = np.vectorize(labelToIndex)
         y_indices = iTL(y,self)
-        self.onehot_encoder = self.onehot_encoder(categories=np.unique(df[y_column])).fit(np.expand_dims(y, axis=1))
+        self.onehot_encoder = self.onehot_encoder().fit(np.expand_dims(y, axis=1))
         
         # M iterations (#WeakLearners)
         for m in range(self.n_lstm):
@@ -84,9 +84,11 @@ class LSTMRUSBoostClassifier_:
             # Scale inputs
             for feature in range(X_.shape[2]):
                 X_[:,:,feature] = self.scaler[feature].transform(X_[:,:,feature])
+            #Correctly order the sequence [X(t-N),...,X(t)]
+            X_ = np.flip(X_, 1)
 
             y_ = df_[y_column].values
-            y_ = self.onehot_encoder.transform(np.expand_dims(y_, axis=1))
+            y_ = self.onehot_encoder.transform(np.expand_dims(y_, axis=1)).toarray()
             D_ = np.sum([D[epoch] for epoch in df_.index], axis=-1)
 
         # 2) LSTM training
@@ -97,18 +99,17 @@ class LSTMRUSBoostClassifier_:
 
             model.add(keras.layers.LSTM(
                     input_shape=(self.sequence_length, num_features),
-                    units=64-num_features,
+                    units=32,
                     return_sequences=False))
             model.add(keras.layers.Dropout(0.2))
 
             model.add(keras.layers.Dense(units=num_out, activation='softmax'))
 
             model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
-            Gm = model.fit(X_, y_, sample_weight=D_, epochs=1, batch_size=32, validation_split=0, verbose=0).predict
-            self.models.append(Gm)
+            model.fit(X_, y_, sample_weight=D_, epochs=5, batch_size=32, validation_split=0, verbose=0)
         
         # 3) Error-rate computation
-            predictions_proba = Gm(X)
+            predictions_proba = model.predict(X,verbose=None)
             sum_pseudolosses = 0
             for i, epoch in enumerate(D.keys()):
                 k_index = 0
@@ -122,7 +123,7 @@ class LSTMRUSBoostClassifier_:
         
         # 4) WeakLearner weight for ensemble computation
             BetaM = error/(1-error)
-            self.models[m] = (BetaM,Gm)
+            self.models.append( (BetaM,model.predict) )
 
         # 5) Observation weights update for next iteration with weights normalization
             norm_ = 0
