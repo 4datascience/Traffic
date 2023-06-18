@@ -44,6 +44,7 @@ class LSTMRUSBoostClassifier_:
         k = len(self.classes)
         B = N*(k-1)
         D = {epoch: np.full(k-1,1/B) for epoch in df.index}
+        D_sum = np.sum(np.sum(list(D.values()), axis=-1))
 
         # Get whole dataset samples to later calculate the weighting factors on every iteration
         X = df.filter(regex=(X_columns)).values
@@ -106,18 +107,20 @@ class LSTMRUSBoostClassifier_:
             model.add(keras.layers.Dense(units=num_out, activation='softmax'))
 
             model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
-            model.fit(X_, y_, sample_weight=D_, epochs=5, batch_size=32, validation_split=0, verbose=0)
+            model.fit(X_, y_, sample_weight=D_/D_sum, epochs=5, batch_size=32, validation_split=0, verbose=0)
         
         # 3) Error-rate computation
             predictions_proba = model.predict(X,verbose=None)
             sum_pseudolosses = 0
             for i, epoch in enumerate(D.keys()):
                 k_index = 0
+                term1 = 0
                 for cl in range(k):
                     if cl != y_indices[i]:
-                        sum_pseudolosses += D[epoch][k_index]*(1-predictions_proba[i,y_indices[i]]+predictions_proba[i,cl])
+                        term1 += D[epoch][k_index]/D_[i]*predictions_proba[i,cl]
                         k_index += 1
-
+                sum_pseudolosses += D_[i]/D_sum*(1-predictions_proba[i,y_indices[i]]+term1)
+            
             error = 0.5 * sum_pseudolosses
             self.estimator_errors_.append(error)
         
@@ -126,17 +129,13 @@ class LSTMRUSBoostClassifier_:
             self.models.append( (BetaM,model.predict) )
 
         # 5) Observation weights update for next iteration with weights normalization
-            norm_ = 0
             for i, epoch in enumerate(D.keys()):
                 k_index = 0
                 for cl in range(k):
                     if cl != y_indices[i]:
                         w_ = 0.5*(1+predictions_proba[i,y_indices[i]]-predictions_proba[i,cl])
                         D[epoch][k_index] *= BetaM**(self.learning_rate*w_)
-                        norm_ += D[epoch][k_index]
                         k_index += 1
-            for epoch in D.keys():
-                D[epoch] /= norm_
 
         self.observation_weights_ = D
         
