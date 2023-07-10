@@ -43,16 +43,17 @@ class AdaBoostClassifier_:
         # Training data initalization
         X_ = df.filter(regex=(X_columns)).values
         y_ = df[y_column].values
+        iTL = np.vectorize(labelToIndex)
+        y_indices_ = iTL(y_,self)
         
         # M iterations (#WeakLearners)
         for m in range(self.n_estimators):
             D_ = np.sum(list(D.values()), axis=-1)
-            iTL = np.vectorize(labelToIndex)
-            y_indices_ = iTL(y_,self)
+            D_sum = np.sum(D_)
 
         # 1) WeakLearner training
             Gm = base.clone(self.base_estimator).\
-                            fit(X_,y_,sample_weight=D_).predict_proba
+                            fit(X_,y_,sample_weight=D_/D_sum).predict_proba
             self.models.append(Gm)
         
         # 2) Error-rate computation
@@ -60,10 +61,12 @@ class AdaBoostClassifier_:
             sum_pseudolosses = 0
             for i, epoch in enumerate(D):
                 k_index = 0
+                term1 = 0
                 for cl in range(k):
                     if cl != y_indices_[i]:
-                        sum_pseudolosses += D[epoch][k_index]*(1-predictions_proba[i,y_indices_[i]]+predictions_proba[i,cl])
+                        term1 += D[epoch][k_index]/D_[i]*predictions_proba[i,cl]
                         k_index += 1
+                sum_pseudolosses += D_[i]/D_sum*(1-predictions_proba[i,y_indices_[i]]+term1)
 
             error = 0.5 * sum_pseudolosses
             self.estimator_errors_.append(error)
@@ -73,18 +76,13 @@ class AdaBoostClassifier_:
             self.models[m] = (BetaM,Gm)
 
         # 4) Observation weights update for next iteration with weights normalization
-            norm_ = 0
             for i, epoch in enumerate(D.keys()):
                 k_index = 0
                 for cl in range(k):
                     if cl != y_indices_[i]:
                         w_ = 0.5*(1+predictions_proba[i,y_indices_[i]]-predictions_proba[i,cl])
                         D[epoch][k_index] *= BetaM**(self.learning_rate*w_)
-                        norm_ += D[epoch][k_index]
                         k_index += 1
-            for epoch in D.keys():
-                for k_index in range(k-1):
-                    D[epoch][k_index] /= norm_
         
         self.observation_weights_ = D
         
